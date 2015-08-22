@@ -14,7 +14,7 @@
 #define RX_BUFSIZE		64		// Buffer Size
 #define TX_BUFSIZE		64
 
-//#define EMULATOR 
+#define EMULATOR
 
 typedef struct _RXBUFFER
 {

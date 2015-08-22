@@ -30,7 +30,7 @@ BYTE currentError = 0x00;
 BYTE request_data = 0x00;
 
 // For calculating the temperature.
-float currentTemp = 0x00;
+float currentTemp = 25.0;
 float temp_buffer[5], temp_buffer2[5];
 
 // For pid controls
@@ -44,6 +44,10 @@ float integralMax = 2600.0;
 
 BYTE fanFlag = 0;
 
+#if defined(EMULATOR)
+WORD photodiode_emul = 0;
+#endif
+
 /**********************************
 * Function : void PCR_Task(void)
 * This function is overall routine for microPCR
@@ -54,7 +58,9 @@ void PCR_Task(void)
 	Command_Setting();
 
 	// Sensing the adc values(for photodiode, chamber, heatsink)
-	Sensor_Task();
+	#if !defined(EMULATOR)
+		Sensor_Task();
+	#endif
 	
 	if( rxBuffer.ledControl ){
 		//LED_WG = rxBuffer.led_wg;
@@ -231,6 +237,12 @@ void Command_Setting(void)
 		case CMD_READY:
 			if( currentState == STATE_RUNNING )
 				Run_Task();
+			#if defined(EMULATOR)
+				else{
+					currentTemp = 25.0;
+					photodiode_emul = 0;
+				}	
+			#endif
 			break;
 		case CMD_PCR_RUN:
 			if( currentState == STATE_READY )
@@ -289,6 +301,10 @@ void Run_Task(void)
 	{
 		prevTargetTemp = currentTargetTemp;
 		currentTargetTemp = rxBuffer.currentTargetTemp;
+		
+		#if defined(EMULATOR)
+			photodiode_emul += 100;
+		#endif
 
 		if ( !(fabs(prevTargetTemp - currentTargetTemp) < .5) ) 
 		{
@@ -325,6 +341,7 @@ void PID_Control(void)
 	double currentErr = 0, proportional = 0, integral = 0;
 	double derivative = 0;
 	int pwmValue = 0xffff;
+	double emul_value = 0.0;
 
 	// read pid values from buffer
 	if( rxBuffer.cmd == CMD_PCR_RUN )
@@ -358,6 +375,7 @@ void PID_Control(void)
 	lastIntegral = integral;
 
 	//PID Control
+	/* not working for emulator
 	if(	prevTargetTemp > currentTargetTemp )
 	{
 		if( fanFlag == 0  || (fanFlag ==1 && currentTargetTemp - currentTemp >= 2.0))
@@ -367,9 +385,22 @@ void PID_Control(void)
 			lastError = 0;
 		}
 	} 
+	*/
 
-	CCPR1L = (BYTE)(pwmValue>>2);
-	CCP1CON = ((CCP1CON&0xCF) | (BYTE)((pwmValue&0x03)<<4));
+	#if !defined(EMULATOR)
+		CCPR1L = (BYTE)(pwmValue>>2);
+		CCP1CON = ((CCP1CON&0xCF) | (BYTE)((pwmValue&0x03)<<4));
+	#else
+		if( pwmValue == 0 )
+			emul_value = -0.1;
+		else
+			emul_value = (pwmValue/1023.);
+
+		currentTemp += emul_value;
+
+		photodiode_h = (BYTE)(photodiode_emul>>8);
+		photodiode_l = (BYTE)(photodiode_emul);
+	#endif
 }
 
 void Stop_Task(void)
